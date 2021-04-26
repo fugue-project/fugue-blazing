@@ -23,7 +23,10 @@ package:
 	python3 setup.py bdist_wheel
 
 test:
-	python3 -bb -m pytest tests/
+	python3 -bb -m pytest tests/cpu/
+
+testgpu:
+	python3 -bb -m pytest tests/gpu/
 
 jupyter:
 	pip install .
