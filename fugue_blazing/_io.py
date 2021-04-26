@@ -65,17 +65,13 @@ def _load_parquet(
     p: FileParser, columns: Any = None, **kwargs: Any
 ) -> Tuple[cudf.DataFrame, Any]:
     if columns is None:
-        pdf = cudf.read_parquet(p.uri, **{"engine": "pyarrow", **kwargs})
+        pdf = cudf.read_parquet(p.uri, **kwargs)
         return pdf, None
     if isinstance(columns, list):  # column names
-        pdf = cudf.read_parquet(
-            p.uri, columns=columns, **{"engine": "pyarrow", **kwargs}
-        )
+        pdf = cudf.read_parquet(p.uri, columns=columns, **kwargs)
         return pdf, None
     schema = Schema(columns)
-    pdf = cudf.read_parquet(
-        p.uri, columns=schema.names, **{"engine": "pyarrow", **kwargs}
-    )
+    pdf = cudf.read_parquet(p.uri, columns=schema.names, **kwargs)
     return pdf, schema
 
 
