@@ -1,6 +1,6 @@
 import os
 
-from fugue_blazing._io import _FORMAT_MAP, load_df, save_df
+from fugue_blazing._io import load_df, save_df
 from fugue_blazing.dataframe import CudaDataFrame
 from pytest import raises
 from triad.collections.fs import FileSystem

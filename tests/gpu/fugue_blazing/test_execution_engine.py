@@ -1,5 +1,5 @@
 import pandas as pd
-from fugue_blazing.execution_engine import CudaExecutionEngine
+from fugue_blazing import CudaExecutionEngine, setup_shortcuts
 from fugue_test.builtin_suite import BuiltInTests
 from fugue_test.execution_suite import ExecutionEngineTests
 
@@ -121,3 +121,18 @@ class CudaExecutionEngineBuiltInTests(BuiltInTests.Tests):
             a = a.transform(mock_tf1)
             aa = dag.select("* FROM", a)
             dag.select("* FROM", b).assert_eq(aa)
+
+
+def test_mix():
+    setup_shortcuts()
+
+    def t(df: pd.DataFrame) -> pd.DataFrame:
+        return df
+
+    dag = FugueWorkflow()
+    res = dag.df([[0]], "a:int").transform(t, schema="*")
+    res = dag.select("* FROM ", res, " WHERE a=0")
+    res.yield_dataframe_as("res")
+
+    assert [[0]] == dag.run("blazing")["res"].as_array()
+    assert [[0]] == dag.run(("native", "bsql"))["res"].as_array()

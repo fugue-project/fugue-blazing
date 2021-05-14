@@ -1,9 +1,12 @@
 import logging
+import os
 from threading import RLock
 from typing import Any, Callable, List, Optional, Set, Union
 
 import cudf
 from blazingsql import BlazingContext
+from fugue_blazing._io import load_df, save_df
+from fugue_blazing.dataframe import CudaDataFrame
 from triad.collections.dict import IndexedOrderedDict
 from triad.collections.fs import FileSystem
 from triad.utils.assertion import assert_or_throw
@@ -29,8 +32,6 @@ from fugue.execution.execution_engine import (
     ExecutionEngine,
     SQLEngine,
 )
-from fugue_blazing._io import load_df, save_df
-from fugue_blazing.dataframe import CudaDataFrame
 
 
 class BlazingSQLEngine(SQLEngine):
@@ -39,12 +40,18 @@ class BlazingSQLEngine(SQLEngine):
     :param execution_engine: the execution engine this sql engine will run on
     """
 
-    def __init__(self, execution_engine: ExecutionEngine):
+    def __init__(self, execution_engine: ExecutionEngine, to_local: bool = False):
         super().__init__(execution_engine)
+        self._to_local = to_local
+        if isinstance(execution_engine, CudaExecutionEngine):
+            self._cuda_engine: CudaExecutionEngine = execution_engine
+        else:
+            self._cuda_engine = CudaExecutionEngine(execution_engine.conf)
 
     def select(self, dfs: DataFrames, statement: str) -> DataFrame:
-        result = self.execution_engine.blazing_sql(statement, **dfs)
-        return self.execution_engine.to_df(result)
+        result = self._cuda_engine.blazing_sql(statement, **dfs)
+        w = self._cuda_engine.to_df(result)
+        return w.as_local() if self._to_local else w
 
 
 class CudaExecutionEngine(ExecutionEngine):
@@ -375,4 +382,5 @@ class CudaExecutionEngine(ExecutionEngine):
                 "partition_spec is not respected in %s.save_df", self
             )
         df = self.to_df(df).as_local()
+        self.fs.makedirs(os.path.dirname(path), recreate=True)
         save_df(df, path, format_hint=format_hint, mode=mode, fs=self.fs, **kwargs)

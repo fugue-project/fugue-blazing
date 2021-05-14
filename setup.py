@@ -27,11 +27,11 @@ setup(
     author_email="goodwanghan@gmail.com",
     keywords="fugue rapids ai blazing sql blazingsql",
     url="http://github.com/fugue-project/fugue-blazing",
-    install_requires=["fugue[sql]>=0.5.3"],
+    install_requires=["fugue[sql]>=0.5.6"],
     extras_require={},
     classifiers=[
         # "3 - Alpha", "4 - Beta" or "5 - Production/Stable"
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "License :: OSI Approved :: Apache Software License",
