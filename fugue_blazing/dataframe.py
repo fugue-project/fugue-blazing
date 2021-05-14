@@ -195,14 +195,9 @@ class CudaDataFrame(DataFrame):
             if columns is None
             else self.schema.extract(columns).pa_schema
         )
-        res: List[Any] = []
-
-        for row in PD_UTILS.as_array_iterable(tdf, schema=schema, type_safe=True):
-            if n < 1:
-                break
-            res.append(list(row))
-            n -= 1
-        return res
+        return PandasDataFrame(tdf, schema=schema, pandas_df_wrapper=True).head(
+            n, columns=columns
+        )
 
     def _apply_schema(
         self, pdf: cudf.DataFrame, schema: Optional[Schema]

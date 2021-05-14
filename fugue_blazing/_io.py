@@ -1,3 +1,4 @@
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cudf
@@ -9,7 +10,10 @@ from triad.collections.schema import Schema
 from triad.exceptions import InvalidOperationError
 from triad.utils.assertion import assert_or_throw
 
+from fugue import PandasDataFrame
 from fugue._utils.io import FileParser, _get_single_files
+from fugue._utils.io import _load_avro as _pd_load_avro
+from fugue._utils.io import _save_avro as _pd_save_avro
 
 
 def load_df(
@@ -61,22 +65,46 @@ def _save_parquet(df: CudaDataFrame, p: FileParser, **kwargs: Any) -> None:
     df.native.to_parquet(p.uri, index=False, **kwargs)
 
 
+def _safe_load_parquet(path: str, **kwargs: Any) -> cudf.DataFrame:
+    fs = FileSystem()
+    if fs.isfile(path):
+        return cudf.read_parquet(path, **kwargs)
+    else:
+        dfs: List[cudf.DataFrame] = []
+        for fp in FileSystem().listdir(path):
+            if fp.endswith(".parquet"):
+                dfs.append(cudf.read_parquet(os.path.join(path, fp), **kwargs))
+        return cudf.concat(dfs)
+
+
 def _load_parquet(
     p: FileParser, columns: Any = None, **kwargs: Any
 ) -> Tuple[cudf.DataFrame, Any]:
     if columns is None:
-        pdf = cudf.read_parquet(p.uri, **kwargs)
+        pdf = _safe_load_parquet(p.uri, **kwargs)
         return pdf, None
     if isinstance(columns, list):  # column names
-        pdf = cudf.read_parquet(p.uri, columns=columns, **kwargs)
+        pdf = _safe_load_parquet(p.uri, columns=columns, **kwargs)
         return pdf, None
     schema = Schema(columns)
-    pdf = cudf.read_parquet(p.uri, columns=schema.names, **kwargs)
+    pdf = _safe_load_parquet(p.uri, columns=schema.names, **kwargs)
     return pdf, schema
 
 
 def _save_csv(df: CudaDataFrame, p: FileParser, **kwargs: Any) -> None:
     df.native.to_csv(p.uri, **{"index": False, "header": False, **kwargs})
+
+
+def _safe_load_csv(path: str, **kwargs: Any) -> cudf.DataFrame:
+    fs = FileSystem()
+    if fs.isfile(path):
+        return cudf.read_csv(path, **kwargs)
+    else:
+        dfs: List[cudf.DataFrame] = []
+        for fp in FileSystem().listdir(path):
+            if fp.endswith(".csv"):
+                dfs.append(cudf.read_csv(os.path.join(path, fp), **kwargs))
+        return cudf.concat(dfs)
 
 
 def _load_csv(
@@ -93,7 +121,7 @@ def _load_csv(
         header = kw["header"]
         del kw["header"]
     if str(header) in ["True", "0"]:
-        pdf = cudf.read_csv(p.uri, **{"index_col": False, "header": 0, **kw})
+        pdf = _safe_load_csv(p.uri, **{"index_col": False, "header": 0, **kw})
         if columns is None:
             return pdf, None
         if isinstance(columns, list):  # column names
@@ -104,12 +132,12 @@ def _load_csv(
         if columns is None:
             raise InvalidOperationError("columns must be set if without header")
         if isinstance(columns, list):  # column names
-            pdf = cudf.read_csv(
+            pdf = _safe_load_csv(
                 p.uri, **{"index_col": False, "header": None, "names": columns, **kw}
             )
             return pdf, None
         schema = Schema(columns)
-        pdf = cudf.read_csv(
+        pdf = _safe_load_csv(
             p.uri, **{"index_col": False, "header": None, "names": schema.names, **kw}
         )
         return pdf, schema
@@ -118,13 +146,26 @@ def _load_csv(
 
 
 def _save_json(df: CudaDataFrame, p: FileParser, **kwargs: Any) -> None:
-    df.native.to_json(p.uri, **kwargs)
+    df.native.to_json(p.uri, **{"orient": "records", "lines": True, **kwargs})
+
+
+def _safe_load_json(path: str, **kwargs: Any) -> cudf.DataFrame:
+    kw = {"orient": "records", "lines": True, **kwargs}
+    fs = FileSystem()
+    if fs.isfile(path):
+        return cudf.read_json(path, **kw)
+    else:
+        dfs: List[cudf.DataFrame] = []
+        for fp in FileSystem().listdir(path):
+            if fp.endswith(".json"):
+                dfs.append(cudf.read_json(os.path.join(path, fp), **kw))
+        return cudf.concat(dfs)
 
 
 def _load_json(
     p: FileParser, columns: Any = None, **kwargs: Any
 ) -> Tuple[cudf.DataFrame, Any]:
-    pdf = cudf.read_json(p.uri, **kwargs).reset_index(drop=True)
+    pdf = _safe_load_json(p.uri, **kwargs).reset_index(drop=True)
     if columns is None:
         return pdf, None
     if isinstance(columns, list):  # column names
@@ -133,22 +174,32 @@ def _load_json(
     return pdf[schema.names], schema
 
 
-_FORMAT_MAP: Dict[str, str] = {
-    ".csv": "csv",
-    ".csv.gz": "csv",
-    ".parquet": "parquet",
-    ".json": "json",
-    ".json.gz": "json",
-}
+def _save_avro(df: CudaDataFrame, p: FileParser, **kwargs: Any) -> None:
+    df.native.to_json(p.uri, **kwargs)
+    _pd_save_avro(
+        PandasDataFrame(df.as_pandas(), schema=df.schema, pandas_df_wrapper=True),
+        p,
+        **kwargs,
+    )
+
+
+def _load_avro(
+    p: FileParser, columns: Any = None, **kwargs: Any
+) -> Tuple[cudf.DataFrame, Any]:
+    pdf, schema = _pd_load_avro(p, columns=columns, **kwargs)
+    return cudf.DataFrame.from_pandas(pdf), schema
+
 
 _FORMAT_LOAD: Dict[str, Callable[..., Tuple[pd.DataFrame, Any]]] = {
     "csv": _load_csv,
     "parquet": _load_parquet,
     "json": _load_json,
+    "avro": _load_avro,
 }
 
 _FORMAT_SAVE: Dict[str, Callable] = {
     "csv": _save_csv,
     "parquet": _save_parquet,
     "json": _save_json,
+    "avro": _save_avro,
 }

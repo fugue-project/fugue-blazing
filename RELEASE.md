@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.0.3
+
+-   Update io
+-   Upgrade Fugue
+
 ## 0.0.2
 
 -   Added this release file
